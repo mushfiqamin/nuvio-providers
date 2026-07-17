@@ -103,7 +103,7 @@ async function searchBdixServers(searchQueries, mediaType, targetSeason = null, 
                                 const filename = decodeURIComponent(parts[parts.length - 1]);
                                 
                                 return {
-                                    name: `DhakaFlix (BDIX) - ${server.root.replace(/\//g, '')}\n${filename}`,
+                                    name: `DhakaFlix (BDIX) - ${server.root.replace(/\//g, '')}\n\n🎬 ${filename}`,
                                     title: filename,
                                     url: `${server.url}${item.href}`,
                                     quality: extractQuality(filename)
