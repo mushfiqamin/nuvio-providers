@@ -1,26 +1,27 @@
-[
-  {
-    "id": "template-provider",
-    "name": "Template Provider",
-    "description": "A starter template for creating Nuvio providers.",
-    "version": "1.0.0",
-    "author": "Your Name",
-    "supportedTypes": [
-      "movie",
-      "tv"
-    ],
-    "filename": "providers/template.js",
-    "enabled": false,
-    "logo": "",
-    "contentLanguage": [
-      "en"
-    ],
-    "formats": [
-      "mp4",
-      "mkv"
-    ],
-    "limited": false,
-    "disabledPlatforms": [],
-    "supportsExternalPlayer": true
-  }
-]
+{
+  "name": "Mushfiq's BDIX Repo",
+  "version": "1.0.0",
+  "scrapers": [
+    {
+      "id": "bdix-dhaka-flix",
+      "name": "DhakaFlix (BDIX)",
+      "description": "Direct high-speed HTTP streaming from DhakaFlix (SamOnline) FTP server for BDIX connected internet users in Bangladesh",
+      "version": "1.0.0",
+      "author": "Mushfiq",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/bdix.js",
+      "enabled": true,
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
+      "contentLanguage": [
+        "en"
+      ],
+      "supportsExternalPlayer": true
+    }
+  ]
+}
