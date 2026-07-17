@@ -33,7 +33,7 @@ function formatSearchQuery(name) {
     return cleanName.replace(/ /g, '\\ ');
 }
 
-async function searchBdixServers(searchQuery, targetSeason = null, targetEpisode = null) {
+async function searchBdixServers(searchQuery, mediaType, targetSeason = null, targetEpisode = null, targetYear = null) {
     const searchPromises = SERVERS.map(async (server) => {
         try {
             const endpoint = `${server.url}${server.root}`;
@@ -52,23 +52,40 @@ async function searchBdixServers(searchQuery, targetSeason = null, targetEpisode
                 return response.search
                     .filter(item => {
                         const lower = item.href.toLowerCase();
+                        const parts = item.href.split('/');
+                        const filename = decodeURIComponent(parts[parts.length - 1]).toLowerCase();
                         
                         // 1. Must be a video file
                         const isVideo = lower.endsWith('.mkv') || lower.endsWith('.mp4') || lower.endsWith('.avi');
                         if (!isVideo) return false;
 
-                        // 2. If it's a TV show, strictly filter for the episode number
-                        if (targetSeason !== null && targetEpisode !== null) {
+                        // 2. Directory Path Filtering (Keep movies out of TV folders, and vice versa)
+                        if (mediaType === 'movie' && (lower.includes('tv-web-series') || lower.includes('tv series'))) {
+                            return false;
+                        }
+                        if (mediaType === 'tv' && (lower.includes('english movies') || lower.includes('hindi movies') || lower.includes('movies'))) {
+                            return false;
+                        }
+
+                        // 3. TV Show Episode Filtering
+                        if (mediaType === 'tv' && targetSeason !== null && targetEpisode !== null) {
                             const s = String(targetSeason).padStart(2, '0');
                             const e = String(targetEpisode).padStart(2, '0');
-                            
-                            // Regex matches s01e01, s01.e01, s01_e01, s01 e01, etc.
                             const epRegex = new RegExp(`s${s}[. _-]?e${e}`, 'i');
                             
-                            if (!epRegex.test(lower)) {
-                                return false; // Drop files that don't match our exact episode
+                            if (!epRegex.test(filename)) {
+                                return false; 
                             }
                         }
+
+                        // 4. Movie Release Year Filtering
+                        if (mediaType === 'movie' && targetYear) {
+                            // If the filename doesn't contain the release year, drop it
+                            if (!filename.includes(targetYear)) {
+                                return false;
+                            }
+                        }
+
                         return true;
                     })
                     .map(item => {
@@ -78,6 +95,7 @@ async function searchBdixServers(searchQuery, targetSeason = null, targetEpisode
                         return {
                             name: `DhakaFlix (BDIX) - ${server.root.replace(/\//g, '')}`,
                             title: filename,
+                            description: filename,
                             url: `${server.url}${item.href}`,
                             quality: extractQuality(filename)
                         };
@@ -99,14 +117,18 @@ async function searchBdixServers(searchQuery, targetSeason = null, targetEpisode
 }
 
 export async function extractStreams(tmdbId, mediaType, season, episode) {
+    // We now fetch the raw TMDB data directly here so we can extract the release year
+    const tmdbUrl = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}`;
+    const data = await fetchJson(tmdbUrl);
+    const title = data.title || data.name;
+    
     if (mediaType === 'movie') {
-        const movieName = await getMediaName(tmdbId, 'movie');
-        // Movies don't pass season/episode arguments
-        return await searchBdixServers(formatSearchQuery(movieName), null, null);
+        // Extract the 4-digit year from the release_date (e.g., "1999-03-30" -> "1999")
+        const year = data.release_date ? data.release_date.split('-')[0] : null;
+        return await searchBdixServers(formatSearchQuery(title), 'movie', null, null, year);
     } else if (mediaType === 'tv') {
-        const showName = await getMediaName(tmdbId, 'tv');
-        // TV shows pass the season and episode down for local Regex filtering
-        return await searchBdixServers(formatSearchQuery(showName), season, episode);
+        const epString = formatEpisodeNumber(season, episode);
+        return await searchBdixServers(formatSearchQuery(title), 'tv', season, episode, null);
     }
     return [];
 }

@@ -1,6 +1,6 @@
 /**
  * bdix - Built from src/bdix/
- * Generated: 2026-07-17T02:05:05.481Z
+ * Generated: 2026-07-17T02:19:28.809Z
  */
 var __defProp = Object.defineProperty;
 var __getOwnPropSymbols = Object.getOwnPropertySymbols;
@@ -75,6 +75,11 @@ function postJson(_0, _1) {
     return JSON.parse(raw);
   });
 }
+function formatEpisodeNumber(season, episode) {
+  const s = String(season).padStart(2, "0");
+  const e = String(episode).padStart(2, "0");
+  return `S${s}E${e}`;
+}
 
 // src/bdix/extractor.js
 var TMDB_API_KEY = "86e4a75a565d93315baaa04efd6cd427";
@@ -82,13 +87,6 @@ var SERVERS = [
   { url: "http://172.16.50.12", root: "/DHAKA-FLIX-12/" },
   { url: "http://172.16.50.14", root: "/DHAKA-FLIX-14/" }
 ];
-function getMediaName(tmdbId, mediaType) {
-  return __async(this, null, function* () {
-    const tmdbUrl = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}`;
-    const data = yield fetchJson(tmdbUrl);
-    return data.title || data.name;
-  });
-}
 function extractQuality(filename) {
   const lower = filename.toLowerCase();
   if (lower.includes("2160p") || lower.includes("4k"))
@@ -105,7 +103,7 @@ function formatSearchQuery(name) {
   let cleanName = name.replace(/[^a-zA-Z0-9 ]/g, "").trim();
   return cleanName.replace(/ /g, "\\ ");
 }
-function searchBdixServers(searchQuery, targetSeason = null, targetEpisode = null) {
+function searchBdixServers(searchQuery, mediaType, targetSeason = null, targetEpisode = null, targetYear = null) {
   return __async(this, null, function* () {
     const searchPromises = SERVERS.map((server) => __async(this, null, function* () {
       try {
@@ -122,14 +120,27 @@ function searchBdixServers(searchQuery, targetSeason = null, targetEpisode = nul
         if (response && response.search && Array.isArray(response.search)) {
           return response.search.filter((item) => {
             const lower = item.href.toLowerCase();
+            const parts = item.href.split("/");
+            const filename = decodeURIComponent(parts[parts.length - 1]).toLowerCase();
             const isVideo = lower.endsWith(".mkv") || lower.endsWith(".mp4") || lower.endsWith(".avi");
             if (!isVideo)
               return false;
-            if (targetSeason !== null && targetEpisode !== null) {
+            if (mediaType === "movie" && (lower.includes("tv-web-series") || lower.includes("tv series"))) {
+              return false;
+            }
+            if (mediaType === "tv" && (lower.includes("english movies") || lower.includes("hindi movies") || lower.includes("movies"))) {
+              return false;
+            }
+            if (mediaType === "tv" && targetSeason !== null && targetEpisode !== null) {
               const s = String(targetSeason).padStart(2, "0");
               const e = String(targetEpisode).padStart(2, "0");
               const epRegex = new RegExp(`s${s}[. _-]?e${e}`, "i");
-              if (!epRegex.test(lower)) {
+              if (!epRegex.test(filename)) {
+                return false;
+              }
+            }
+            if (mediaType === "movie" && targetYear) {
+              if (!filename.includes(targetYear)) {
                 return false;
               }
             }
@@ -140,6 +151,7 @@ function searchBdixServers(searchQuery, targetSeason = null, targetEpisode = nul
             return {
               name: `DhakaFlix (BDIX) - ${server.root.replace(/\//g, "")}`,
               title: filename,
+              description: filename,
               url: `${server.url}${item.href}`,
               quality: extractQuality(filename)
             };
@@ -160,12 +172,15 @@ function searchBdixServers(searchQuery, targetSeason = null, targetEpisode = nul
 }
 function extractStreams(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
+    const tmdbUrl = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}`;
+    const data = yield fetchJson(tmdbUrl);
+    const title = data.title || data.name;
     if (mediaType === "movie") {
-      const movieName = yield getMediaName(tmdbId, "movie");
-      return yield searchBdixServers(formatSearchQuery(movieName), null, null);
+      const year = data.release_date ? data.release_date.split("-")[0] : null;
+      return yield searchBdixServers(formatSearchQuery(title), "movie", null, null, year);
     } else if (mediaType === "tv") {
-      const showName = yield getMediaName(tmdbId, "tv");
-      return yield searchBdixServers(formatSearchQuery(showName), season, episode);
+      const epString = formatEpisodeNumber(season, episode);
+      return yield searchBdixServers(formatSearchQuery(title), "tv", season, episode, null);
     }
     return [];
   });
