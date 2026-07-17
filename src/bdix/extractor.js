@@ -27,14 +27,13 @@ function extractQuality(filename) {
     return "Unknown";
 }
 
-function formatSearchQuery(name, episodeString = "") {
+// We only format the base name now, no episode strings attached
+function formatSearchQuery(name) {
     let cleanName = name.replace(/[^a-zA-Z0-9 ]/g, '').trim();
-    let query = cleanName;
-    if (episodeString) query += ` ${episodeString}`;
-    return query.replace(/ /g, '\\ ');
+    return cleanName.replace(/ /g, '\\ ');
 }
 
-async function searchBdixServers(searchQuery) {
+async function searchBdixServers(searchQuery, targetSeason = null, targetEpisode = null) {
     const searchPromises = SERVERS.map(async (server) => {
         try {
             const endpoint = `${server.url}${server.root}`;
@@ -53,7 +52,24 @@ async function searchBdixServers(searchQuery) {
                 return response.search
                     .filter(item => {
                         const lower = item.href.toLowerCase();
-                        return lower.endsWith('.mkv') || lower.endsWith('.mp4') || lower.endsWith('.avi');
+                        
+                        // 1. Must be a video file
+                        const isVideo = lower.endsWith('.mkv') || lower.endsWith('.mp4') || lower.endsWith('.avi');
+                        if (!isVideo) return false;
+
+                        // 2. If it's a TV show, strictly filter for the episode number
+                        if (targetSeason !== null && targetEpisode !== null) {
+                            const s = String(targetSeason).padStart(2, '0');
+                            const e = String(targetEpisode).padStart(2, '0');
+                            
+                            // Regex matches s01e01, s01.e01, s01_e01, s01 e01, etc.
+                            const epRegex = new RegExp(`s${s}[. _-]?e${e}`, 'i');
+                            
+                            if (!epRegex.test(lower)) {
+                                return false; // Drop files that don't match our exact episode
+                            }
+                        }
+                        return true;
                     })
                     .map(item => {
                         const parts = item.href.split('/');
@@ -85,11 +101,12 @@ async function searchBdixServers(searchQuery) {
 export async function extractStreams(tmdbId, mediaType, season, episode) {
     if (mediaType === 'movie') {
         const movieName = await getMediaName(tmdbId, 'movie');
-        return await searchBdixServers(formatSearchQuery(movieName));
+        // Movies don't pass season/episode arguments
+        return await searchBdixServers(formatSearchQuery(movieName), null, null);
     } else if (mediaType === 'tv') {
         const showName = await getMediaName(tmdbId, 'tv');
-        const epString = formatEpisodeNumber(season, episode);
-        return await searchBdixServers(formatSearchQuery(showName, epString));
+        // TV shows pass the season and episode down for local Regex filtering
+        return await searchBdixServers(formatSearchQuery(showName), season, episode);
     }
     return [];
 }
