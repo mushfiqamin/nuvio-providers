@@ -1,6 +1,6 @@
 /**
  * bdix - Built from src/bdix/
- * Generated: 2026-07-17T02:19:28.809Z
+ * Generated: 2026-07-17T02:28:00.111Z
  */
 var __defProp = Object.defineProperty;
 var __getOwnPropSymbols = Object.getOwnPropertySymbols;
@@ -149,9 +149,9 @@ function searchBdixServers(searchQuery, mediaType, targetSeason = null, targetEp
             const parts = item.href.split("/");
             const filename = decodeURIComponent(parts[parts.length - 1]);
             return {
-              name: `DhakaFlix (BDIX) - ${server.root.replace(/\//g, "")}`,
+              name: `DhakaFlix (BDIX) - ${server.root.replace(/\//g, "")}
+${filename}`,
               title: filename,
-              description: filename,
               url: `${server.url}${item.href}`,
               quality: extractQuality(filename)
             };
