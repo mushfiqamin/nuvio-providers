@@ -1,6 +1,6 @@
 /**
  * bdix - Built from src/bdix/
- * Generated: 2026-07-17T02:28:00.111Z
+ * Generated: 2026-07-17T21:39:46.893Z
  */
 var __defProp = Object.defineProperty;
 var __getOwnPropSymbols = Object.getOwnPropertySymbols;
@@ -75,11 +75,6 @@ function postJson(_0, _1) {
     return JSON.parse(raw);
   });
 }
-function formatEpisodeNumber(season, episode) {
-  const s = String(season).padStart(2, "0");
-  const e = String(episode).padStart(2, "0");
-  return `S${s}E${e}`;
-}
 
 // src/bdix/extractor.js
 var TMDB_API_KEY = "86e4a75a565d93315baaa04efd6cd427";
@@ -87,6 +82,16 @@ var SERVERS = [
   { url: "http://172.16.50.12", root: "/DHAKA-FLIX-12/" },
   { url: "http://172.16.50.14", root: "/DHAKA-FLIX-14/" }
 ];
+function getMediaName(tmdbId, mediaType) {
+  return __async(this, null, function* () {
+    const tmdbUrl = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}`;
+    const data = yield fetchJson(tmdbUrl);
+    return {
+      title: data.title || data.name,
+      year: data.release_date ? data.release_date.split("-")[0] : null
+    };
+  });
+}
 function extractQuality(filename) {
   const lower = filename.toLowerCase();
   if (lower.includes("2160p") || lower.includes("4k"))
@@ -99,88 +104,102 @@ function extractQuality(filename) {
     return "480p";
   return "Unknown";
 }
-function formatSearchQuery(name) {
+function getSearchQueries(name) {
   let cleanName = name.replace(/[^a-zA-Z0-9 ]/g, "").trim();
-  return cleanName.replace(/ /g, "\\ ");
+  return [
+    cleanName.replace(/ /g, "\\ "),
+    // Space-escaped pattern (e.g., "Love\ Revolution")
+    cleanName.replace(/ /g, ".")
+    // Dot-separated pattern (e.g., "Love.Revolution")
+  ];
 }
-function searchBdixServers(searchQuery, mediaType, targetSeason = null, targetEpisode = null, targetYear = null) {
+function searchBdixServers(searchQueries, mediaType, targetSeason = null, targetEpisode = null, targetYear = null) {
   return __async(this, null, function* () {
-    const searchPromises = SERVERS.map((server) => __async(this, null, function* () {
-      try {
-        const endpoint = `${server.url}${server.root}`;
-        const payload = {
-          action: "get",
-          search: {
-            href: server.root,
-            ignorecase: true,
-            pattern: searchQuery
-          }
-        };
-        const response = yield postJson(endpoint, payload);
-        if (response && response.search && Array.isArray(response.search)) {
-          return response.search.filter((item) => {
-            const lower = item.href.toLowerCase();
-            const parts = item.href.split("/");
-            const filename = decodeURIComponent(parts[parts.length - 1]).toLowerCase();
-            const isVideo = lower.endsWith(".mkv") || lower.endsWith(".mp4") || lower.endsWith(".avi");
-            if (!isVideo)
-              return false;
-            if (mediaType === "movie" && (lower.includes("tv-web-series") || lower.includes("tv series"))) {
-              return false;
-            }
-            if (mediaType === "tv" && (lower.includes("english movies") || lower.includes("hindi movies") || lower.includes("movies"))) {
-              return false;
-            }
-            if (mediaType === "tv" && targetSeason !== null && targetEpisode !== null) {
-              const s = String(targetSeason).padStart(2, "0");
-              const e = String(targetEpisode).padStart(2, "0");
-              const epRegex = new RegExp(`s${s}[. _-]?e${e}`, "i");
-              if (!epRegex.test(filename)) {
-                return false;
+    let allPromises = [];
+    SERVERS.forEach((server) => {
+      searchQueries.forEach((query) => {
+        const promise = (() => __async(this, null, function* () {
+          try {
+            const endpoint = `${server.url}${server.root}`;
+            const payload = {
+              action: "get",
+              search: {
+                href: server.root,
+                ignorecase: true,
+                pattern: query
               }
-            }
-            if (mediaType === "movie" && targetYear) {
-              if (!filename.includes(targetYear)) {
-                return false;
-              }
-            }
-            return true;
-          }).map((item) => {
-            const parts = item.href.split("/");
-            const filename = decodeURIComponent(parts[parts.length - 1]);
-            return {
-              name: `DhakaFlix (BDIX) - ${server.root.replace(/\//g, "")}
-${filename}`,
-              title: filename,
-              url: `${server.url}${item.href}`,
-              quality: extractQuality(filename)
             };
-          });
-        }
-      } catch (error) {
-        return [];
-      }
-      return [];
-    }));
-    const allResults = yield Promise.all(searchPromises);
+            const response = yield postJson(endpoint, payload);
+            if (response && response.search && Array.isArray(response.search)) {
+              return response.search.filter((item) => {
+                const lower = item.href.toLowerCase();
+                const parts = item.href.split("/");
+                const filename = decodeURIComponent(parts[parts.length - 1]).toLowerCase();
+                const isVideo = lower.endsWith(".mkv") || lower.endsWith(".mp4") || lower.endsWith(".avi");
+                if (!isVideo)
+                  return false;
+                if (mediaType === "movie" && (lower.includes("tv-web-series") || lower.includes("tv series"))) {
+                  return false;
+                }
+                if (mediaType === "tv" && (lower.includes("english movies") || lower.includes("hindi movies") || lower.includes("movies"))) {
+                  return false;
+                }
+                if (mediaType === "tv" && targetSeason !== null && targetEpisode !== null) {
+                  const s = String(targetSeason).padStart(2, "0");
+                  const e = String(targetEpisode).padStart(2, "0");
+                  const epRegex = new RegExp(`s${s}[. _-]?e${e}`, "i");
+                  if (!epRegex.test(filename)) {
+                    return false;
+                  }
+                }
+                if (mediaType === "movie" && targetYear) {
+                  if (!filename.includes(targetYear)) {
+                    return false;
+                  }
+                }
+                return true;
+              }).map((item) => {
+                const parts = item.href.split("/");
+                const filename = decodeURIComponent(parts[parts.length - 1]);
+                return {
+                  name: `DhakaFlix (BDIX) - ${server.root.replace(/\//g, "")}
+${filename}`,
+                  title: filename,
+                  url: `${server.url}${item.href}`,
+                  quality: extractQuality(filename)
+                };
+              });
+            }
+          } catch (error) {
+            return [];
+          }
+          return [];
+        }))();
+        allPromises.push(promise);
+      });
+    });
+    const allResults = yield Promise.all(allPromises);
     let finalStreams = [];
+    let seenUrls = /* @__PURE__ */ new Set();
     for (let i = 0; i < allResults.length; i++) {
-      finalStreams = finalStreams.concat(allResults[i]);
+      allResults[i].forEach((stream) => {
+        if (!seenUrls.has(stream.url)) {
+          seenUrls.add(stream.url);
+          finalStreams.push(stream);
+        }
+      });
     }
     return finalStreams;
   });
 }
 function extractStreams(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
-    const tmdbUrl = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}`;
-    const data = yield fetchJson(tmdbUrl);
-    const title = data.title || data.name;
+    const media = yield getMediaName(tmdbId, mediaType);
+    const queries = getSearchQueries(media.title);
     if (mediaType === "movie") {
-      const year = data.release_date ? data.release_date.split("-")[0] : null;
-      return yield searchBdixServers(formatSearchQuery(title), "movie", null, null, year);
+      return yield searchBdixServers(queries, "movie", null, null, media.year);
     } else if (mediaType === "tv") {
-      const epString = formatEpisodeNumber(season, episode);
-      return yield searchBdixServers(formatSearchQuery(title), "tv", season, episode, null);
+      return yield searchBdixServers(queries, "tv", season, episode, null);
     }
     return [];
   });
