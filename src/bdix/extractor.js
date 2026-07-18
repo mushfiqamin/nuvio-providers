@@ -40,101 +40,94 @@ function getSearchQueries(name) {
 }
 
 async function searchBdixServers(searchQueries, mediaType, targetSeason = null, targetEpisode = null, targetYear = null) {
-    let allPromises = [];
-
-    // Map out every query variant across all internal targets
-    SERVERS.forEach(server => {
-        searchQueries.forEach(query => {
-            const promise = (async () => {
-                try {
-                    const endpoint = `${server.url}${server.root}`;
-                    const payload = {
-                        action: "get",
-                        search: {
-                            href: server.root,
-                            ignorecase: true,
-                            pattern: query
-                        }
-                    };
-                    
-                    const response = await postJson(endpoint, payload);
-                    
-                    if (response && response.search && Array.isArray(response.search)) {
-                        return response.search
-                            .filter(item => {
-                                const lower = item.href.toLowerCase();
-                                const parts = item.href.split('/');
-                                const filename = decodeURIComponent(parts[parts.length - 1]).toLowerCase();
-                                
-                                // 1. Must be a video file
-                                const isVideo = lower.endsWith('.mkv') || lower.endsWith('.mp4') || lower.endsWith('.avi');
-                                if (!isVideo) return false;
-
-                                // 2. Directory Path Filtering (Keep movies out of TV folders, and vice versa)
-                                if (mediaType === 'movie' && (lower.includes('tv-web-series') || lower.includes('tv series'))) {
-                                    return false;
-                                }
-                                if (mediaType === 'tv' && (lower.includes('english movies') || lower.includes('hindi movies') || lower.includes('movies'))) {
-                                    return false;
-                                }
-
-                                // 3. TV Show Episode Filtering
-                                if (mediaType === 'tv' && targetSeason !== null && targetEpisode !== null) {
-                                    const s = String(targetSeason).padStart(2, '0');
-                                    const e = String(targetEpisode).padStart(2, '0');
-                                    const epRegex = new RegExp(`s${s}[. _-]?e${e}`, 'i');
-                                    
-                                    if (!epRegex.test(filename)) {
-                                        return false; 
-                                    }
-                                }
-
-                                // 4. Movie Release Year Filtering
-                                if (mediaType === 'movie' && targetYear) {
-                                    if (!filename.includes(targetYear)) {
-                                        return false;
-                                    }
-                                }
-
-                                return true;
-                            })
-                            .map(item => {
-                                const parts = item.href.split('/');
-                                const filename = decodeURIComponent(parts[parts.length - 1]);
-                                const qualityVal = extractQuality(filename);
-                                
-                                return {
-                                    // Title row with the new vertical separator
-                                    name: `DhakaFlix (BDIX) | ${server.root.replace(/\//g, '')}`,
-                                    title: filename,
-                                    url: `${server.url}${item.href}`,
-                                    // Pushing the filename and quality into the native small-font field with requested spacing
-                                    quality: `\n🎬 ${filename}\n\n${qualityVal}`
-                                };
-                            });
-                    }
-                } catch (error) {
-                    return [];
-                }
-                return [];
-            })();
-            allPromises.push(promise);
-        });
-    });
-
-    const allResults = await Promise.all(allPromises);
-    
-    // Deduplicate results (in case both queries matched the same file)
     let finalStreams = [];
     let seenUrls = new Set();
-    
-    for (let i = 0; i < allResults.length; i++) {
-        allResults[i].forEach(stream => {
-            if (!seenUrls.has(stream.url)) {
-                seenUrls.add(stream.url);
-                finalStreams.push(stream);
+
+    // Loop through queries sequentially (Index 0: Spaces, Index 1: Dots)
+    for (const query of searchQueries) {
+        
+        // Fire requests to Server 12 and 14 for THIS specific query only
+        const searchPromises = SERVERS.map(async (server) => {
+            try {
+                const endpoint = `${server.url}${server.root}`;
+                const payload = {
+                    action: "get",
+                    search: {
+                        href: server.root,
+                        ignorecase: true,
+                        pattern: query
+                    }
+                };
+                
+                const response = await postJson(endpoint, payload);
+                
+                if (response && response.search && Array.isArray(response.search)) {
+                    return response.search
+                        .filter(item => {
+                            const lower = item.href.toLowerCase();
+                            const parts = item.href.split('/');
+                            const filename = decodeURIComponent(parts[parts.length - 1]).toLowerCase();
+                            
+                            // 1. Must be a video file
+                            const isVideo = lower.endsWith('.mkv') || lower.endsWith('.mp4') || lower.endsWith('.avi');
+                            if (!isVideo) return false;
+
+                            // 2. Directory Path Filtering
+                            if (mediaType === 'movie' && (lower.includes('tv-web-series') || lower.includes('tv series'))) return false;
+                            if (mediaType === 'tv' && (lower.includes('english movies') || lower.includes('hindi movies') || lower.includes('movies'))) return false;
+
+                            // 3. TV Show Episode Filtering
+                            if (mediaType === 'tv' && targetSeason !== null && targetEpisode !== null) {
+                                const s = String(targetSeason).padStart(2, '0');
+                                const e = String(targetEpisode).padStart(2, '0');
+                                const epRegex = new RegExp(`s${s}[. _-]?e${e}`, 'i');
+                                if (!epRegex.test(filename)) return false; 
+                            }
+
+                            // 4. Movie Release Year Filtering
+                            if (mediaType === 'movie' && targetYear && !filename.includes(targetYear)) return false;
+
+                            return true;
+                        })
+                        .map(item => {
+                            const parts = item.href.split('/');
+                            const filename = decodeURIComponent(parts[parts.length - 1]);
+                            const qualityVal = extractQuality(filename);
+                            
+                            return {
+                                // Title row with the new vertical separator
+                                name: `DhakaFlix (BDIX) | ${server.root.replace(/\//g, '')}`,
+                                title: filename,
+                                url: `${server.url}${item.href}`,
+                                // Pushing the filename and quality into the native small-font field with requested spacing
+                                quality: `\n🎬 ${filename}\n\n${qualityVal}`
+                            };
+                        });
+                }
+            } catch (error) {
+                return [];
             }
+            return [];
         });
+
+        // Wait for both Server 12 and Server 14 to finish THIS query
+        const allResults = await Promise.all(searchPromises);
+        
+        // Collect and deduplicate results securely
+        for (let i = 0; i < allResults.length; i++) {
+            allResults[i].forEach(stream => {
+                if (!seenUrls.has(stream.url)) {
+                    seenUrls.add(stream.url);
+                    finalStreams.push(stream);
+                }
+            });
+        }
+
+        // SMART FALLBACK TRIGGER:
+        // If we found streams, break the loop immediately. We don't need to fire the dot query.
+        if (finalStreams.length > 0) {
+            break;
+        }
     }
     
     return finalStreams;

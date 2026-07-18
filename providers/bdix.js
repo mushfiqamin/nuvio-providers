@@ -1,6 +1,6 @@
 /**
  * bdix - Built from src/bdix/
- * Generated: 2026-07-18T00:04:35.091Z
+ * Generated: 2026-07-18T00:18:11.330Z
  */
 var __defProp = Object.defineProperty;
 var __getOwnPropSymbols = Object.getOwnPropertySymbols;
@@ -115,84 +115,77 @@ function getSearchQueries(name) {
 }
 function searchBdixServers(searchQueries, mediaType, targetSeason = null, targetEpisode = null, targetYear = null) {
   return __async(this, null, function* () {
-    let allPromises = [];
-    SERVERS.forEach((server) => {
-      searchQueries.forEach((query) => {
-        const promise = (() => __async(this, null, function* () {
-          try {
-            const endpoint = `${server.url}${server.root}`;
-            const payload = {
-              action: "get",
-              search: {
-                href: server.root,
-                ignorecase: true,
-                pattern: query
+    let finalStreams = [];
+    let seenUrls = /* @__PURE__ */ new Set();
+    for (const query of searchQueries) {
+      const searchPromises = SERVERS.map((server) => __async(this, null, function* () {
+        try {
+          const endpoint = `${server.url}${server.root}`;
+          const payload = {
+            action: "get",
+            search: {
+              href: server.root,
+              ignorecase: true,
+              pattern: query
+            }
+          };
+          const response = yield postJson(endpoint, payload);
+          if (response && response.search && Array.isArray(response.search)) {
+            return response.search.filter((item) => {
+              const lower = item.href.toLowerCase();
+              const parts = item.href.split("/");
+              const filename = decodeURIComponent(parts[parts.length - 1]).toLowerCase();
+              const isVideo = lower.endsWith(".mkv") || lower.endsWith(".mp4") || lower.endsWith(".avi");
+              if (!isVideo)
+                return false;
+              if (mediaType === "movie" && (lower.includes("tv-web-series") || lower.includes("tv series")))
+                return false;
+              if (mediaType === "tv" && (lower.includes("english movies") || lower.includes("hindi movies") || lower.includes("movies")))
+                return false;
+              if (mediaType === "tv" && targetSeason !== null && targetEpisode !== null) {
+                const s = String(targetSeason).padStart(2, "0");
+                const e = String(targetEpisode).padStart(2, "0");
+                const epRegex = new RegExp(`s${s}[. _-]?e${e}`, "i");
+                if (!epRegex.test(filename))
+                  return false;
               }
-            };
-            const response = yield postJson(endpoint, payload);
-            if (response && response.search && Array.isArray(response.search)) {
-              return response.search.filter((item) => {
-                const lower = item.href.toLowerCase();
-                const parts = item.href.split("/");
-                const filename = decodeURIComponent(parts[parts.length - 1]).toLowerCase();
-                const isVideo = lower.endsWith(".mkv") || lower.endsWith(".mp4") || lower.endsWith(".avi");
-                if (!isVideo)
-                  return false;
-                if (mediaType === "movie" && (lower.includes("tv-web-series") || lower.includes("tv series"))) {
-                  return false;
-                }
-                if (mediaType === "tv" && (lower.includes("english movies") || lower.includes("hindi movies") || lower.includes("movies"))) {
-                  return false;
-                }
-                if (mediaType === "tv" && targetSeason !== null && targetEpisode !== null) {
-                  const s = String(targetSeason).padStart(2, "0");
-                  const e = String(targetEpisode).padStart(2, "0");
-                  const epRegex = new RegExp(`s${s}[. _-]?e${e}`, "i");
-                  if (!epRegex.test(filename)) {
-                    return false;
-                  }
-                }
-                if (mediaType === "movie" && targetYear) {
-                  if (!filename.includes(targetYear)) {
-                    return false;
-                  }
-                }
-                return true;
-              }).map((item) => {
-                const parts = item.href.split("/");
-                const filename = decodeURIComponent(parts[parts.length - 1]);
-                const qualityVal = extractQuality(filename);
-                return {
-                  // Title row with the new vertical separator
-                  name: `DhakaFlix (BDIX) | ${server.root.replace(/\//g, "")}`,
-                  title: filename,
-                  url: `${server.url}${item.href}`,
-                  // Pushing the filename and quality into the native small-font field with requested spacing
-                  quality: `
+              if (mediaType === "movie" && targetYear && !filename.includes(targetYear))
+                return false;
+              return true;
+            }).map((item) => {
+              const parts = item.href.split("/");
+              const filename = decodeURIComponent(parts[parts.length - 1]);
+              const qualityVal = extractQuality(filename);
+              return {
+                // Title row with the new vertical separator
+                name: `DhakaFlix (BDIX) | ${server.root.replace(/\//g, "")}`,
+                title: filename,
+                url: `${server.url}${item.href}`,
+                // Pushing the filename and quality into the native small-font field with requested spacing
+                quality: `
 \u{1F3AC} ${filename}
 
 ${qualityVal}`
-                };
-              });
-            }
-          } catch (error) {
-            return [];
+              };
+            });
           }
+        } catch (error) {
           return [];
-        }))();
-        allPromises.push(promise);
-      });
-    });
-    const allResults = yield Promise.all(allPromises);
-    let finalStreams = [];
-    let seenUrls = /* @__PURE__ */ new Set();
-    for (let i = 0; i < allResults.length; i++) {
-      allResults[i].forEach((stream) => {
-        if (!seenUrls.has(stream.url)) {
-          seenUrls.add(stream.url);
-          finalStreams.push(stream);
         }
-      });
+        return [];
+      }));
+      const allResults = yield Promise.all(searchPromises);
+      for (let i = 0; i < allResults.length; i++) {
+        allResults[i].forEach((stream) => {
+          if (!seenUrls.has(stream.url)) {
+            seenUrls.add(stream.url);
+            finalStreams.push(stream);
+          }
+        });
+      }
+      if (finalStreams.length > 0) {
+        break;
+      }
     }
     return finalStreams;
   });
