@@ -101,12 +101,15 @@ async function searchBdixServers(searchQueries, mediaType, targetSeason = null, 
                             .map(item => {
                                 const parts = item.href.split('/');
                                 const filename = decodeURIComponent(parts[parts.length - 1]);
+                                const qualityVal = extractQuality(filename);
                                 
                                 return {
-                                    name: `DhakaFlix (BDIX) - ${server.root.replace(/\//g, '')}\n\n🎬 ${filename}`,
+                                    // Title row with the new vertical separator
+                                    name: `DhakaFlix (BDIX) | ${server.root.replace(/\//g, '')}`,
                                     title: filename,
                                     url: `${server.url}${item.href}`,
-                                    quality: extractQuality(filename)
+                                    // Pushing the filename and quality into the native small-font field with requested spacing
+                                    quality: `\n🎬 ${filename}\n\n${qualityVal}`
                                 };
                             });
                     }

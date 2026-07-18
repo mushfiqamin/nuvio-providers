@@ -1,6 +1,6 @@
 /**
  * bdix - Built from src/bdix/
- * Generated: 2026-07-17T23:42:19.771Z
+ * Generated: 2026-07-18T00:04:35.091Z
  */
 var __defProp = Object.defineProperty;
 var __getOwnPropSymbols = Object.getOwnPropertySymbols;
@@ -161,13 +161,17 @@ function searchBdixServers(searchQueries, mediaType, targetSeason = null, target
               }).map((item) => {
                 const parts = item.href.split("/");
                 const filename = decodeURIComponent(parts[parts.length - 1]);
+                const qualityVal = extractQuality(filename);
                 return {
-                  name: `DhakaFlix (BDIX) - ${server.root.replace(/\//g, "")}
-
-\u{1F3AC} ${filename}`,
+                  // Title row with the new vertical separator
+                  name: `DhakaFlix (BDIX) | ${server.root.replace(/\//g, "")}`,
                   title: filename,
                   url: `${server.url}${item.href}`,
-                  quality: extractQuality(filename)
+                  // Pushing the filename and quality into the native small-font field with requested spacing
+                  quality: `
+\u{1F3AC} ${filename}
+
+${qualityVal}`
                 };
               });
             }
